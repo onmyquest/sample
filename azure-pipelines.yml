@@ -16,8 +16,7 @@ container:
 variables:
   containerRegistryConnection: containerRegistry
   imageName: 'sysdiglabs/dummy-vuln-app'
-  tags: |
-    latest
+  tags: latest
 
 steps:
 - task: Docker@2
