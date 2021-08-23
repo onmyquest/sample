@@ -29,12 +29,4 @@ steps:
 
 - script: inline_scan analyze -s https://secure.sysdig.com -k $(secureApiKey) $(imageName):latest
   displayName: Scan image
-- task: Docker@2
-  inputs:
-    command: 'login'
-    containerRegistry: $(containerRegistryConnection)
-- task: Docker@2
-  inputs:
-    command: 'push'
-    tags: $(tags)
-    containerRegistry: $(containerRegistryConnection)
+
