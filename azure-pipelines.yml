@@ -9,10 +9,6 @@ trigger:
 pool:
   vmImage: ubuntu-latest
 
-container:
-  image: sysdiglabs/secure-inline-scan:2
-  options: -v /usr/bin/docker:/usr/bin/docker -v /var/run/docker.sock:/var/run/docker.sock
-
 variables:
   containerRegistryConnection: containerRegistry
   imageName: 'sysdiglabs/dummy-vuln-app'
