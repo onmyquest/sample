@@ -1,0 +1,47 @@
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: javaapp
+  labels:
+    name: java-deployment
+    app: demo
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: demo
+      name: javaapp
+      role: jfrontend
+  template:
+    metadata:
+      labels:
+        app: demo
+        name: javaapp
+        role: jfrontend
+    spec:
+      containers:
+        - name: javaapp
+          image: ltagliamonte/counterapp
+          env:
+          - name: MONGO
+            value: mongo.java-app.svc.cluster.local
+          - name: CASSANDRA
+            value: cassandra.java-app.svc.cluster.local
+          - name: REDIS
+            value: redis.java-app.svc.cluster.local
+          ports:
+          - containerPort: 8080
+            name: java
+          livenessProbe:
+            httpGet:
+              path: /simpleWebJava/TestServlet
+              port: 8080
+            initialDelaySeconds: 120
+            timeoutSeconds: 5
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
