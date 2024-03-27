@@ -1,0 +1,278 @@
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations: {}
+  labels:
+    affinity: worker
+    app: sysdigcloud
+    role: worker
+  name: sysdigcloud-worker
+  namespace: sysdig
+spec:
+  replicas: 1
+  progressDeadlineSeconds: 600
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app: sysdigcloud
+      role: worker
+  strategy:
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 50%
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: sysdigcloud
+        role: worker
+        affinity: worker
+        np-object-class: sysdigcloud-worker
+        np-labels: applied
+        np-cassandra: allow-access
+        np-elasticsearch: allow-access
+        np-redis: allow-access
+        np-redis-sentinel: allow-access
+        np-kafka: allow-access
+        np-postgresql: allow-access
+        np-promqlator: allow-access
+        np-sysdigcloud-worker-internal: allow-access
+        np-sysdig-meerkat-api: allow-access
+        np-sysdig-alert-manager: allow-access
+        np-sysdig-alert-notifier: allow-access
+      annotations:
+        version: "5.1.11.230911153711"
+        secret-shasum: 8fec26f59fb6ff6bc8419b96a202cda60c80cc99d1517ca69d5170384cf4a12d
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9001"
+        prometheus.io/path: "/actuator/prometheus"
+    spec:
+      serviceAccountName: sysdig
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: affinity
+                  operator: In
+                  values:
+                  - worker
+              topologyKey: kubernetes.io/hostname
+            weight: 100
+      containers:
+        - name: email-renderer
+          resources:
+            limits:
+              cpu: "1"
+              memory: 500Mi
+            requests:
+              cpu: "500m"
+              memory: 100Mi
+          image: quay.io/sysdig/sysdigcloud-backend:5.1.11.230911153711-sysdig-email-renderer
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            runAsUser: 1001
+            runAsGroup: 1001
+        - name: worker
+          resources:
+            limits:
+              cpu: "4"
+              memory: 4Gi
+            requests:
+              cpu: "1"
+              memory: 1Gi
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+          image: quay.io/sysdig/sysdigcloud-backend:5.1.11.230911153711-sysdig-worker
+          imagePullPolicy: IfNotPresent
+          volumeMounts:
+            - mountPath: /opt/sysdig.conf.d/20_additional_config
+              name: additional-config
+            - name: logs
+              mountPath: /logs
+            - name: config
+              mountPath: /opt/kubernets_config
+            - name: legacy-onpremise-config
+              mountPath: /opt/sysdig.conf.d/10_legacy-onpremise-config
+            - name: java-certs
+              mountPath: /opt/java-certs/
+            # Uncomment this if you want to split sysdigcloud configurations into configs and secrets.
+            #- name: secrets
+            #  mountPath: /opt/kubernets_secrets
+            - name: elasticsearch-certs
+              mountPath: /opt/kubernets_secrets/elasticsearch_certs
+          env:
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: ROLES
+              value: worker
+            - name: ADDITIONAL_PROFILES
+              value: onpremise
+            - name: LOG_ROLE
+              value: worker
+            - name: JAVA_OPTS
+              valueFrom:
+                configMapKeyRef:
+                  name: sysdigcloud-config
+                  key: sysdigcloud.jvm.worker.options
+            - name: CASSANDRA_ENDPOINT_SNITCH
+              valueFrom:
+                configMapKeyRef:
+                  name: sysdigcloud-config
+                  key: cassandra.endpoint.snitch
+            - name: CASSANDRA_DC
+              valueFrom:
+                configMapKeyRef:
+                  name: sysdigcloud-config
+                  key: cassandra.datacenter.name
+            # redis
+            - name: REDIS_ENDPOINT
+              valueFrom:
+                configMapKeyRef:
+                  name: sysdigcloud-config
+                  key: redis.endpoint
+            - name: REDIS_PASSWORD
+              valueFrom:
+                configMapKeyRef:
+                  name: sysdigcloud-config
+                  key: redis.password
+            - name: REDIS_USE_SENTINEL
+              valueFrom:
+                configMapKeyRef:
+                  name: sysdigcloud-config
+                  key: redis.sentinel.enabled
+            - name: REDIS_SENTINEL_MASTER_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: sysdigcloud-config
+                  key: redis.sentinel.master.name
+            - name: REDIS_SENTINELS_LIST
+              valueFrom:
+                configMapKeyRef:
+                  name: sysdigcloud-config
+                  key: redis.sentinel.sentinels
+            - name: ES_HOSTNAME
+              valueFrom:
+                configMapKeyRef:
+                  name: sysdigcloud-config
+                  key: elasticsearch.hostname
+            - name: ES_SEARCHGUARD_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: sysdigcloud-config
+                  key: elasticsearch.adminuser
+            - name: ES_SEARCHGUARD_ENABLED
+              valueFrom:
+                configMapKeyRef:
+                  name: sysdigcloud-config
+                  key: elasticsearch.tlsencryption.enabled
+            - name: ES_SEARCHGUARD_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: elasticsearch-tls
+                  key: ELASTICSEARCH_PASSWORD
+            # This is duplicated to allow backwards compatibility with older backend images.
+            - name: ELASTICSEARCH_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: elasticsearch-tls
+                  key: ELASTICSEARCH_PASSWORD
+            - name: ELASTICSEARCH_CLUSTER_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: elasticsearch-tls
+                  key: ELASTICSEARCH_PASSWORD
+            - name: DB_ENGINE
+              value: postgres
+            - name: POSTGRES_DBNAME
+              valueFrom:
+                configMapKeyRef:
+                  name: sysdigcloud-postgres-config
+                  key: sysdig.db.dbname
+            - name: POSTGRES_ENDPOINT
+              valueFrom:
+                configMapKeyRef:
+                  name: sysdigcloud-postgres-config
+                  key: sysdig.db.endpoint
+            - name: POSTGRES_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: sysdigcloud-postgres-config
+                  key: sysdig.db.user
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: sysdigcloud-postgres-secret
+                  key: sysdig.db.password
+            - name: POSTGRES_QUARTZ_DBNAME
+              valueFrom:
+                configMapKeyRef:
+                  name: sysdigcloud-postgres-config
+                  key: quartz.db.dbname
+            - name: POSTGRES_QUARTZ_ENDPOINT
+              valueFrom:
+                configMapKeyRef:
+                  name: sysdigcloud-postgres-config
+                  key: quartz.db.endpoint
+            - name: POSTGRES_QUARTZ_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: sysdigcloud-postgres-config
+                  key: quartz.db.user
+            - name: POSTGRES_QUARTZ_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: sysdigcloud-postgres-secret
+                  key: quartz.db.password
+          readinessProbe:
+            httpGet:
+              path: /api/ping
+              port: 9000
+              scheme: HTTP
+            failureThreshold: 3
+            initialDelaySeconds: 30
+            timeoutSeconds: 2
+            periodSeconds: 10
+            successThreshold: 1
+          lifecycle:
+            preStop:
+              exec:
+                command: ["curl","-v","http://127.0.0.1:9000/api/admin/drain"]
+      securityContext: {}
+      terminationGracePeriodSeconds: 60
+      dnsPolicy: ClusterFirst
+      imagePullSecrets:
+        - name: sysdigcloud-pull-secret
+      volumes:
+        - name: logs
+          emptyDir: {}
+        - configMap:
+            defaultMode: 420
+            name: sysdigcloud-additional-config
+          name: additional-config
+        - name: config
+          configMap:
+            defaultMode: 420
+            name: sysdigcloud-config
+        - configMap:
+            defaultMode: 420
+            name: legacy-onpremise-config
+          name: legacy-onpremise-config
+        - name: elasticsearch-certs
+          secret:
+            defaultMode: 420
+            secretName: es-certs
+        - name: java-certs
+          secret:
+            defaultMode: 420
+            secretName: sysdigcloud-java-certs
+        ## Uncomment this if you want to split sysdigcloud configurations into configs and secrets.
+        #- name: secrets
+        #  secret:
+        #    secretName: <secret_name>
